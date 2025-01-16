@@ -13,121 +13,124 @@ from klpbuild.klplib.codestreams_data import get_codestreams_data, set_codestrea
 from klpbuild.klplib.ksrc import GitHelper
 
 
-class Setup():
-    def __init__(
-        self,
-        lp_name,
-    ):
+def run(args):
+    lp_name = args.name
+    lp_path = utils.get_workdir(lp_name)
 
-        lp_path = utils.get_workdir(lp_name)
-        if lp_path.exists() and not lp_path.is_dir():
-            raise ValueError("--name needs to be a directory, or not to exist")
-        self.lp_name = lp_name
+    if lp_path.exists() and not lp_path.is_dir():
+        raise ValueError("--name needs to be a directory, or not to exist")
 
-    @staticmethod
-    def setup_file_funcs(conf, mod, file_funcs, mod_file_funcs, conf_mod_file_funcs):
-        if conf and not conf.startswith("CONFIG_"):
-            raise ValueError("Please specify --conf with CONFIG_ prefix")
+    ffuncs = _setup_file_funcs(args.conf, args.module, args.file_funcs,
+                                    args.mod_file_funcs, args.conf_mod_file_funcs)
 
-        if not file_funcs and not mod_file_funcs and not conf_mod_file_funcs:
-            raise ValueError("You need to specify at least one of the file-funcs variants!")
+    codestreams = _setup_codestreams(lp_name,
+        {"cve": args.cve, "conf": args.conf, "lp_filter": args.filter,
+            "lp_skips": args.skips, "no_check": args.no_check})
 
-        ffuncs = {}
-        for f in file_funcs:
-            filepath = f[0]
-            funcs = f[1:]
+    _setup_project_files(lp_name, codestreams, ffuncs, args.archs)
 
-            ffuncs[filepath] = {"module": mod, "conf": conf, "symbols": funcs}
 
-        for f in mod_file_funcs:
-            fmod = f[0]
-            filepath = f[1]
-            funcs = f[2:]
+def _setup_codestreams(lp_name, data):
+    if not lp_name.startswith("bsc"):
+        raise ValueError("Please use prefix 'bsc' when creating a livepatch for codestreams")
 
-            ffuncs[filepath] = {"module": fmod, "conf": conf, "symbols": funcs}
+    ksrc = GitHelper(lp_name, data["lp_filter"], data["lp_skips"])
 
-        for f in conf_mod_file_funcs:
-            fconf = f[0]
-            fmod = f[1]
-            filepath = f[2]
-            funcs = f[3:]
+    # Called at this point because codestreams is populated
+    # FIXME: we should check all configs, like when using --conf-mod-file-funcs
+    commits, patched_cs, patched_kernels, codestreams = ksrc.scan(data["cve"],
+                                                                  data["conf"],
+                                                                  data["no_check"])
+    # Add new codestreams to the already existing list, skipping duplicates
+    set_codestreams_data(commits=commits, patched_kernels=patched_kernels,
+                         patched_cs=patched_cs, cve=data['cve'])
+    return codestreams
 
-            ffuncs[filepath] = {"module": fmod, "conf": fconf, "symbols": funcs}
+def _setup_project_files(lp_name, codestreams, ffuncs, archs):
+    utils.get_workdir(lp_name).mkdir(exist_ok=True)
 
-        return ffuncs
+    archs.sort()
+    set_codestreams_data(archs=archs)
 
-    def setup_codestreams(self, data):
-        if not self.lp_name.startswith("bsc"):
-            raise ValueError("Please use prefix 'bsc' when creating a livepatch for codestreams")
+    logging.info("Affected architectures:")
+    logging.info("\t%s", ' '.join(archs))
 
-        ksrc = GitHelper(self.lp_name, data["lp_filter"], data["lp_skips"])
+    logging.info("Checking files, symbols, modules...")
+    # Setup the missing codestream info needed
+    for cs in codestreams:
+        cs.set_files(copy.deepcopy(ffuncs))
 
-        # Called at this point because codestreams is populated
-        # FIXME: we should check all configs, like when using --conf-mod-file-funcs
-        commits, patched_cs, patched_kernels, codestreams = ksrc.scan(data["cve"],
-                                                                      data["conf"],
-                                                                      data["no_check"])
-        # Add new codestreams to the already existing list, skipping duplicates
-        old_patched_cs = get_codestreams_data('patched_cs')
-        new_patched_cs = natsorted(list(set(old_patched_cs + patched_cs)))
+        # Check if the files exist in the respective codestream directories
+        mod_syms = {}
+        for f, fdata in cs.files.items():
 
-        set_codestreams_data(commits=commits, patched_kernels=patched_kernels,
-                             patched_cs=new_patched_cs, cve=data['cve'])
-        return codestreams
+            mod = fdata["module"]
+            cs.validate_config(fdata["conf"], mod)
 
-    def setup_project_files(self, codestreams, ffuncs, archs):
-        utils.get_workdir(self.lp_name).mkdir(exist_ok=True)
+            sdir = cs.get_src_dir()
+            if not Path(sdir, f).is_file():
+                raise RuntimeError(f"{cs.name()} ({cs.kernel}): File {f} not found on {str(sdir)}")
 
-        archs.sort()
-        set_codestreams_data(archs=archs)
+            ipa_f = cs.get_ipa_file(f)
+            if not ipa_f.is_file():
+                ipa_f.touch()
+                logging.warning("%s (%s): File %s not found. Creating an empty file.", cs.name(), cs.kernel, ipa_f)
 
-        logging.info("Affected architectures:")
-        logging.info("\t%s", ' '.join(archs))
+            # If the config was enabled on all supported architectures,
+            # there is no point in leaving the conf being set, since the
+            # feature will be available everywhere.
+            if archs == utils.ARCHS:
+                fdata["conf"] = ""
 
-        logging.info("Checking files, symbols, modules...")
-        # Setup the missing codestream info needed
-        for cs in codestreams:
-            cs.set_files(copy.deepcopy(ffuncs))
+            mod_path = cs.find_obj_path(utils.ARCH, mod)
 
-            # Check if the files exist in the respective codestream directories
-            mod_syms = {}
-            for f, fdata in cs.files.items():
+            # Validate if the module being livepatched is supported or not
+            if utils.check_module_unsupported(mod_path):
+                logging.warning("%s (%s}): Module %s is not supported by SLE", cs.name(), cs.kernel, mod)
 
-                mod = fdata["module"]
-                cs.validate_config(fdata["conf"], mod)
+            cs.modules[mod] = str(mod_path)
+            mod_syms.setdefault(mod, [])
+            mod_syms[mod].extend(fdata["symbols"])
 
-                sdir = cs.get_src_dir()
-                if not Path(sdir, f).is_file():
-                    raise RuntimeError(f"{cs.name()} ({cs.kernel}): File {f} not found on {str(sdir)}")
+        # Verify if the functions exist in the specified object
+        for mod, syms in mod_syms.items():
+            arch_syms = cs.check_symbol_archs(archs, mod, syms, False)
+            if arch_syms:
+                for arch, syms in arch_syms.items():
+                    logging.warning("%s-%s (%s): Symbols %s not found on %s object",
+                                    cs.name(), arch, cs.kernel, ",".join(syms), mod)
 
-                ipa_f = cs.get_ipa_file(f)
-                if not ipa_f.is_file():
-                    ipa_f.touch()
-                    logging.warning("%s (%s): File %s not found. Creating an empty file.", cs.name(), cs.kernel, ipa_f)
+    store_codestreams(lp_name, codestreams)
+    logging.info("Done. Setup finished.")
 
-                # If the config was enabled on all supported architectures,
-                # there is no point in leaving the conf being set, since the
-                # feature will be available everywhere.
-                if archs == utils.ARCHS:
-                    fdata["conf"] = ""
 
-                mod_path = cs.find_obj_path(utils.ARCH, mod)
+def _setup_file_funcs(conf, mod, file_funcs, mod_file_funcs, conf_mod_file_funcs):
+    if conf and not conf.startswith("CONFIG_"):
+        raise ValueError("Please specify --conf with CONFIG_ prefix")
 
-                # Validate if the module being livepatched is supported or not
-                if utils.check_module_unsupported(mod_path):
-                    logging.warning("%s (%s}): Module %s is not supported by SLE", cs.name(), cs.kernel, mod)
+    if not file_funcs and not mod_file_funcs and not conf_mod_file_funcs:
+        raise ValueError("You need to specify at least one of the file-funcs variants!")
 
-                cs.modules[mod] = str(mod_path)
-                mod_syms.setdefault(mod, [])
-                mod_syms[mod].extend(fdata["symbols"])
+    ffuncs = {}
+    for f in file_funcs:
+        filepath = f[0]
+        funcs = f[1:]
 
-            # Verify if the functions exist in the specified object
-            for mod, syms in mod_syms.items():
-                arch_syms = cs.check_symbol_archs(archs, mod, syms, False)
-                if arch_syms:
-                    for arch, syms in arch_syms.items():
-                        logging.warning("%s-%s (%s): Symbols %s not found on %s object",
-                                        cs.name(), arch, cs.kernel, ",".join(syms), mod)
+        ffuncs[filepath] = {"module": mod, "conf": conf, "symbols": funcs}
 
-        store_codestreams(self.lp_name, codestreams)
-        logging.info("Done. Setup finished.")
+    for f in mod_file_funcs:
+        fmod = f[0]
+        filepath = f[1]
+        funcs = f[2:]
+
+        ffuncs[filepath] = {"module": fmod, "conf": conf, "symbols": funcs}
+
+    for f in conf_mod_file_funcs:
+        fconf = f[0]
+        fmod = f[1]
+        filepath = f[2]
+        funcs = f[3:]
+
+        ffuncs[filepath] = {"module": fmod, "conf": fconf, "symbols": funcs}
+
+    return ffuncs

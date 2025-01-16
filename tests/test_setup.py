@@ -5,8 +5,8 @@ import inspect
 import logging
 import pytest
 
-from klpbuild.plugins.setup import Setup
 from tests.utils import get_codestreams_file
+from klpbuild.plugins.setup import _setup_project_files, _setup_codestreams, _setup_file_funcs
 from klpbuild.klplib import utils
 
 CS = "15.5u19"
@@ -15,25 +15,25 @@ DEFAULT_DATA = {"cve": None, "lp_filter": CS, "lp_skips": None, "conf": "CONFIG_
 
 def test_missing_file_funcs():
     with pytest.raises(ValueError, match=r"You need to specify at least one of the file-funcs variants!"):
-        Setup.setup_file_funcs(None, None, [], [], [])
+        _setup_file_funcs(None, None, [], [], [])
 
 
 def test_missing_conf_prefix():
     with pytest.raises(ValueError, match=r"Please specify --conf with CONFIG_ prefix"):
-        Setup.setup_file_funcs("TUN", None, [], [], [])
+        _setup_file_funcs("TUN", None, [], [], [])
 
 
 def test_file_funcs_ok():
     # Check for multiple variants of file-funcs
-    assert Setup.setup_file_funcs("CONFIG_TUN", "tun", [
+    assert _setup_file_funcs("CONFIG_TUN", "tun", [
                                   ["drivers/net/tun.c", "tun_chr_ioctl", "tun_free_netdev"]], [], []) == \
         {"drivers/net/tun.c": {"module": "tun", "conf": "CONFIG_TUN", "symbols": ["tun_chr_ioctl", "tun_free_netdev"]}}
 
-    assert Setup.setup_file_funcs("CONFIG_TUN", None, [],
+    assert _setup_file_funcs("CONFIG_TUN", None, [],
                                   [["tun", "drivers/net/tun.c", "tun_chr_ioctl", "tun_free_netdev"]], []) == \
         {"drivers/net/tun.c": {"module": "tun", "conf": "CONFIG_TUN", "symbols": ["tun_chr_ioctl", "tun_free_netdev"]}}
 
-    assert Setup.setup_file_funcs(None, None, [], [],
+    assert _setup_file_funcs(None, None, [], [],
                                   [["CONFIG_TUN", "tun", "drivers/net/tun.c", "tun_chr_ioctl", "tun_free_netdev"]]) == \
         {"drivers/net/tun.c": {"module": "tun", "conf": "CONFIG_TUN", "symbols": ["tun_chr_ioctl", "tun_free_netdev"]}}
 
@@ -41,39 +41,36 @@ def test_file_funcs_ok():
 def test_non_existent_file():
     with pytest.raises(RuntimeError, match=r".*: File drivers/net/tuna.c not found on .*"):
         lp = "bsc_" + inspect.currentframe().f_code.co_name
-        lp_setup = Setup(lp)
 
         ffuncs = {"drivers/net/tuna.c": {"module": "tun", "conf": "CONFIG_TUN",
                                          "symbols": ["tun_chr_ioctl", "tun_free_netdev"]}}
 
-        codestreams = lp_setup.setup_codestreams(DEFAULT_DATA)
-        lp_setup.setup_project_files(codestreams, ffuncs, utils.ARCHS)
+        codestreams = _setup_codestreams(lp, DEFAULT_DATA)
+        _setup_project_files(lp, codestreams, ffuncs, utils.ARCHS)
 
 
 def test_non_existent_module():
     lp = "bsc_" + inspect.currentframe().f_code.co_name
     with pytest.raises(RuntimeError, match=r"Module not found: tuna"):
         lp = "bsc_" + inspect.currentframe().f_code.co_name
-        lp_setup = Setup(lp)
 
         ffuncs = {"drivers/net/tun.c": {"module": "tuna", "conf": "CONFIG_TUN",
                                         "symbols": ["tun_chr_ioctll", "tun_free_netdev"]}}
 
-        codestreams = lp_setup.setup_codestreams(DEFAULT_DATA)
-        lp_setup.setup_project_files(codestreams, ffuncs, utils.ARCHS)
+        codestreams = _setup_codestreams(lp, DEFAULT_DATA)
+        _setup_project_files(lp, codestreams, ffuncs, utils.ARCHS)
 
 
 def test_invalid_sym(caplog):
     lp = "bsc_" + inspect.currentframe().f_code.co_name
     with caplog.at_level(logging.WARNING):
         lp = "bsc_" + inspect.currentframe().f_code.co_name
-        lp_setup = Setup(lp)
 
         ffuncs = {"drivers/net/tun.c": {"module": "tun", "conf": "CONFIG_TUN",
                                         "symbols": ["tun_chr_ioctll", "tun_free_netdev"]}}
 
-        codestreams = lp_setup.setup_codestreams(DEFAULT_DATA)
-        lp_setup.setup_project_files(codestreams, ffuncs, utils.ARCHS)
+        codestreams = _setup_codestreams(lp, DEFAULT_DATA)
+        _setup_project_files(lp, codestreams, ffuncs, utils.ARCHS)
 
     assert "Symbols tun_chr_ioctll not found on tun" in caplog.text
 
@@ -81,7 +78,6 @@ def test_invalid_sym(caplog):
 def test_valid_micro_patchid():
     # Make sure that patchid is informed for SLE MICRO
     lp = "bsc_" + inspect.currentframe().f_code.co_name
-    lp_setup = Setup(lp)
 
     ffuncs = {"drivers/net/tun.c": {"module": "tun", "conf": "CONFIG_TUN",
                                     "symbols": ["tun_chr_ioctl", "tun_free_netdev"]}}
@@ -89,8 +85,8 @@ def test_valid_micro_patchid():
     micro_cs = "6.0u2"
     micro_data = {"cve": None, "lp_filter": micro_cs, "lp_skips": None, "conf": "CONFIG_TUN", "no_check": False}
 
-    codestreams = lp_setup.setup_codestreams(micro_data)
-    lp_setup.setup_project_files(codestreams, ffuncs, utils.ARCHS)
+    codestreams = _setup_codestreams(lp, micro_data)
+    _setup_project_files(lp, codestreams, ffuncs, utils.ARCHS)
 
     cs_conf = get_codestreams_file(lp)["codestreams"][micro_cs]
 
@@ -100,7 +96,7 @@ def test_valid_micro_patchid():
 def test_valite_conf_mod_file_funcs():
     # Check that passing mod-file-funcs can create entries differently from general
     # --module and --file-funcs
-    ffuncs = Setup.setup_file_funcs("CONFIG_NET_SCH_QFQ", "sch_qfq", [["net/sched/sch_qfq.c", "qfq_change_class"]], [
+    ffuncs = _setup_file_funcs("CONFIG_NET_SCH_QFQ", "sch_qfq", [["net/sched/sch_qfq.c", "qfq_change_class"]], [
                                     ["btsdio", "drivers/bluetooth/btsdio.c", "btsdio_probe", "btsdio_remove"]], [])
 
     sch = ffuncs["net/sched/sch_qfq.c"]
@@ -109,7 +105,7 @@ def test_valite_conf_mod_file_funcs():
     assert sch["module"] == "sch_qfq"
     assert bts["module"] == "btsdio"
 
-    ffuncs = Setup.setup_file_funcs("CONFIG_NET_SCH_QFQ", "sch_qfq",
+    ffuncs = _setup_file_funcs("CONFIG_NET_SCH_QFQ", "sch_qfq",
                                     [["net/sched/sch_qfq.c", "qfq_change_class"]], [],
                                     [["CONFIG_BT_HCIBTSDIO", "btsdio",
                                         "drivers/bluetooth/btsdio.c", "btsdio_probe", "btsdio_remove"]])

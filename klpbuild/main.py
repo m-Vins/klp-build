@@ -13,8 +13,8 @@ from klpbuild.klplib.ibs import IBS
 from klpbuild.klplib.ksrc import GitHelper
 from klpbuild.plugins.extractor import Extractor
 from klpbuild.plugins.inline import Inliner
-from klpbuild.plugins.setup import Setup
 
+from klpbuild.plugins import setup
 
 def main():
     args = create_parser().parse_args(sys.argv[1:])
@@ -29,13 +29,7 @@ def main():
         load_codestreams('bsc_check')
 
     if args.cmd == "setup":
-        setup = Setup(args.name)
-        ffuncs = Setup.setup_file_funcs(args.conf, args.module, args.file_funcs,
-                                        args.mod_file_funcs, args.conf_mod_file_funcs)
-        codestreams = setup.setup_codestreams(
-            {"cve": args.cve, "conf": args.conf, "lp_filter": args.filter,
-                "lp_skips": args.skips, "no_check": args.no_check})
-        setup.setup_project_files(codestreams, ffuncs, args.archs)
+        setup.run(args)
 
     elif args.cmd == "extract":
         Extractor(args.name, args.filter, args.apply_patches, args.avoid_ext).run()
