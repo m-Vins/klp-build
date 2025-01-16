@@ -16,6 +16,7 @@ from klpbuild.plugins.inline import Inliner
 
 from klpbuild.plugins import setup
 from klpbuild.plugins import scan
+from klpbuild.plugins import get_patches
 
 def main():
     args = create_parser().parse_args(sys.argv[1:])
@@ -43,7 +44,7 @@ def main():
         Inliner(args.name, args.codestream).check_inline(args.file, args.symbol)
 
     elif args.cmd == "get-patches":
-        GitHelper(args.name, args.filter, "").get_commits(args.cve)
+        get_patches.run(args)
 
     elif args.cmd == "scan":
         scan.run(args)
