@@ -3,6 +3,7 @@
 # Copyright (C) 2021-2024 SUSE
 # Author: Marcos Paulo de Souza <mpdesouza@suse.com>
 
+import importlib
 import logging
 import sys
 
@@ -13,10 +14,16 @@ from klpbuild.klplib.ibs import IBS
 from klpbuild.klplib.ksrc import GitHelper
 from klpbuild.plugins.extractor import Extractor
 
-from klpbuild.plugins import setup
-from klpbuild.plugins import scan
-from klpbuild.plugins import get_patches
-from klpbuild.plugins import inline
+
+def run_plugin(name, args):
+    plugin = "klpbuild.plugins." + name
+
+    try:
+        module = importlib.import_module(plugin)
+        module.run(args)
+    except ModuleNotFoundError:
+        return None
+
 
 def main():
     args = create_parser().parse_args(sys.argv[1:])
@@ -30,24 +37,14 @@ def main():
     else:
         load_codestreams('bsc_check')
 
-    if args.cmd == "setup":
-        setup.run(args)
+    run_plugin(args.cmd, args)
 
-    elif args.cmd == "extract":
+    if args.cmd == "extract":
         Extractor(args.name, args.filter, args.apply_patches, args.avoid_ext).run()
 
     elif args.cmd == "cs-diff":
         lp_filter = args.cs[0] + "|" + args.cs[1]
         Extractor(args.name, lp_filter, False, []).diff_cs()
-
-    elif args.cmd == "check-inline":
-        inline.run(args)
-
-    elif args.cmd == "get-patches":
-        get_patches.run(args)
-
-    elif args.cmd == "scan":
-        scan.run(args)
 
     elif args.cmd == "format-patches":
         GitHelper(args.name, args.filter, "").format_patches(args.version)
