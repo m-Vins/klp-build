@@ -15,6 +15,7 @@ from klpbuild.plugins.extractor import Extractor
 from klpbuild.plugins.inline import Inliner
 
 from klpbuild.plugins import setup
+from klpbuild.plugins import scan
 
 def main():
     args = create_parser().parse_args(sys.argv[1:])
@@ -45,7 +46,7 @@ def main():
         GitHelper(args.name, args.filter, "").get_commits(args.cve)
 
     elif args.cmd == "scan":
-        GitHelper("bsc_check", "", "").scan(args.cve, args.conf, False)
+        scan.run(args)
 
     elif args.cmd == "format-patches":
         GitHelper(args.name, args.filter, "").format_patches(args.version)
