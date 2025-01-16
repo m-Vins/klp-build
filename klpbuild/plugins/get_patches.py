@@ -20,10 +20,10 @@ def run(args):
 
     skips = ""
 
-    return get_commits(lp_name, cve, lp_filter, skips)
+    return get_patches(lp_name, cve, lp_filter, skips)
 
 
-def get_commits(lp_name, cve, lp_filter="", skips=""):
+def get_patches(lp_name, cve, lp_filter="", skips=""):
     gh = GitHelper(lp_name, lp_filter, skips)
 
     if not gh.kern_src:
