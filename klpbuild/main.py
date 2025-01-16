@@ -12,11 +12,11 @@ from klpbuild.klplib.codestreams_data import load_codestreams
 from klpbuild.klplib.ibs import IBS
 from klpbuild.klplib.ksrc import GitHelper
 from klpbuild.plugins.extractor import Extractor
-from klpbuild.plugins.inline import Inliner
 
 from klpbuild.plugins import setup
 from klpbuild.plugins import scan
 from klpbuild.plugins import get_patches
+from klpbuild.plugins import inline
 
 def main():
     args = create_parser().parse_args(sys.argv[1:])
@@ -41,7 +41,7 @@ def main():
         Extractor(args.name, lp_filter, False, []).diff_cs()
 
     elif args.cmd == "check-inline":
-        Inliner(args.name, args.codestream).check_inline(args.file, args.symbol)
+        inline.run(args)
 
     elif args.cmd == "get-patches":
         get_patches.run(args)
