@@ -15,14 +15,11 @@ from klpbuild.klplib.ksrc import GitHelper
 from klpbuild.plugins.extractor import Extractor
 
 
-def run_plugin(name, args):
+def try_run_plugin(name, args):
     plugin = "klpbuild.plugins." + name
 
-    try:
-        module = importlib.import_module(plugin)
-        module.run(args)
-    except ModuleNotFoundError:
-        return None
+    module = importlib.import_module(plugin)
+    module.run(args)
 
 
 def main():
@@ -37,7 +34,14 @@ def main():
     else:
         load_codestreams('bsc_check')
 
-    run_plugin(args.cmd, args)
+
+    # NOTE: this is a temporary solution until all the commands get converted
+    # into a plugin
+    try:
+        try_run_plugin(args.cmd, args)
+        return
+    except ModuleNotFoundError:
+        pass
 
     if args.cmd == "extract":
         Extractor(args.name, args.filter, args.apply_patches, args.avoid_ext).run()
