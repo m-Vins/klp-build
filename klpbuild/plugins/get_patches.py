@@ -190,3 +190,6 @@ def get_patches(lp_name, cve, lp_filter="", skips=""):
         print("")
 
     return commits
+
+def store_patches():
+    pass

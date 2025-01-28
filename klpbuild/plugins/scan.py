@@ -26,7 +26,7 @@ def run(args):
 
 def scan(lp_name, cve, conf, no_check=False, lp_filter="", skips=""):
 
-    gh = GitHelper(lp_name, lp_filter, skips)
+    gh = GitHelper(lp_filter=lp_filter, skips=skips)
 
     # Always get the latest supported.csv file and check the content
     # against the codestreams informed by the user

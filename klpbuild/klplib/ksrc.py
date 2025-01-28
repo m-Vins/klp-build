@@ -21,7 +21,7 @@ from klpbuild.klplib.codestream import Codestream
 
 
 class GitHelper():
-    def __init__(self, lp_name, lp_filter, skips):
+    def __init__(self, lp_name=None, lp_filter=None, skips=None):
 
         self.kern_src = get_user_path('kernel_src_dir', isopt=True)
 
