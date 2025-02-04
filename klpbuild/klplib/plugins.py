@@ -3,7 +3,10 @@
 # Copyright (C) 2025 SUSE
 # Author: Vincenzo Mezzela <vincenzo.mezzela@suse.com>
 
+import argparse
+import functools
 import importlib
+import inspect
 import logging
 
 PLUGINS_PATH = "klpbuild.plugins."
@@ -27,3 +30,25 @@ def try_run_plugin(name, args):
     assert hasattr(module, "run"), f"Module {name} is not a plugin!"
 
     module.run(args)
+
+
+def unpack_args(func):
+    """
+    Decorator that extracts arguments from an `argparse.Namespace` object and
+    passes only those that are needed as keyword arguments to the decorated
+    function.
+
+    Raises:
+        AssertionError: If the provided argument is not an instance of
+        `argparse.Namespace`.
+
+    """
+    @functools.wraps(func)
+    def wrapper(args):
+        assert isinstance(args, argparse.Namespace)
+
+        all_args = vars(args)
+        required_args_names = inspect.getfullargspec(func).args
+        required_args = {arg_name: all_args.get(arg_name, None) for arg_name in required_args_names}
+        return func(**required_args)
+    return wrapper
