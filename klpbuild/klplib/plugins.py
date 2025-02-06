@@ -13,6 +13,11 @@ import pkgutil
 PLUGINS_PACKAGE_NAME = "klpbuild.plugins"
 PLUGINS_PATH = PLUGINS_PACKAGE_NAME + "."
 
+
+ALIASES = {
+    "find-callers" : "find_callers"
+}
+
 def try_run_plugin(name, args):
     """
     Attempts to run a plugin by importing the corresponding module and
@@ -26,6 +31,7 @@ def try_run_plugin(name, args):
         AssertionError: If the module does not have a `run` function.
         ModuleNotFoundError: If the specified plugin cannot be found.
     """
+    name = ALIASES.get(name, name)
     logging.debug("Trying to run plugin %s", name)
 
     module = __get_plugin(name)
